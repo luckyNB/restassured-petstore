@@ -1,40 +1,36 @@
 name: Rest Assured API Automation
 
+# ==========================================================
+# Workflow runs ONLY when manually triggered
+# GitHub Actions → Rest Assured API Automation → Run workflow
+# ==========================================================
 on:
-  push:
-    branches:
-      - main
-
-  pull_request:
-    branches:
-      - main
-
   workflow_dispatch:
 
-  schedule:
-    # Every day at 11:30 PM IST
-    # GitHub Actions cron uses UTC
-    - cron: '0 18 * * *'
-
+permissions:
+  contents: read
 
 jobs:
 
   api-tests:
+
     name: Run Rest Assured API Tests
     runs-on: ubuntu-latest
 
+    timeout-minutes: 30
+
     steps:
 
-      # -----------------------------------------
+      # ==========================================================
       # 1. Checkout source code
-      # -----------------------------------------
+      # ==========================================================
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
 
-      # -----------------------------------------
-      # 2. Setup Java
-      # -----------------------------------------
+      # ==========================================================
+      # 2. Setup Java 21
+      # ==========================================================
       - name: Setup JDK 21
         uses: actions/setup-java@v4
         with:
@@ -43,41 +39,80 @@ jobs:
           cache: maven
 
 
-      # -----------------------------------------
+      # ==========================================================
       # 3. Verify Java and Maven
-      # -----------------------------------------
+      # ==========================================================
       - name: Verify Java Version
         run: |
+          echo "=========================================="
+          echo "Java Version"
+          echo "=========================================="
           java -version
+
+          echo ""
+          echo "=========================================="
+          echo "Maven Version"
+          echo "=========================================="
           mvn -version
 
 
-      # -----------------------------------------
+      # ==========================================================
       # 4. Display project structure
-      # -----------------------------------------
+      # ==========================================================
       - name: Verify Project Structure
         run: |
-          echo "Current directory:"
+
+          echo "=========================================="
+          echo "Current Directory"
+          echo "=========================================="
+
           pwd
 
-          echo "Project files:"
+          echo ""
+          echo "=========================================="
+          echo "Project Structure"
+          echo "=========================================="
+
           find . -maxdepth 4 -type f | sort
 
 
-      # -----------------------------------------
-      # 5. Run Rest Assured tests
-      # -----------------------------------------
+      # ==========================================================
+      # 5. Run Rest Assured API Tests
+      #
+      # continue-on-error allows reports and logs to be
+      # uploaded even if tests fail.
+      # ==========================================================
       - name: Run API Automation Tests
+        id: api_tests
+        continue-on-error: true
         run: |
+
+          echo "=========================================="
+          echo "Starting Rest Assured API Tests"
+          echo "=========================================="
+
+          set +e
+
           mvn clean test \
             --batch-mode \
             --no-transfer-progress \
             -e
 
+          TEST_EXIT_CODE=$?
 
-      # -----------------------------------------
-      # 6. Upload Surefire/TestNG reports
-      # -----------------------------------------
+          echo "API_TEST_EXIT_CODE=$TEST_EXIT_CODE" >> "$GITHUB_ENV"
+
+          echo ""
+          echo "=========================================="
+          echo "API Test Exit Code: $TEST_EXIT_CODE"
+          echo "=========================================="
+
+          exit 0
+
+
+      # ==========================================================
+      # 6. Upload Surefire / TestNG reports
+      # ==========================================================
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -91,9 +126,9 @@ jobs:
           retention-days: 14
 
 
-      # -----------------------------------------
+      # ==========================================================
       # 7. Upload Extent Report
-      # -----------------------------------------
+      # ==========================================================
       - name: Upload Extent Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -107,9 +142,9 @@ jobs:
           retention-days: 14
 
 
-      # -----------------------------------------
-      # 8. Upload logs
-      # -----------------------------------------
+      # ==========================================================
+      # 8. Upload test logs
+      # ==========================================================
       - name: Upload Test Logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -122,9 +157,9 @@ jobs:
           retention-days: 14
 
 
-      # -----------------------------------------
+      # ==========================================================
       # 9. Upload screenshots
-      # -----------------------------------------
+      # ==========================================================
       - name: Upload Screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -137,21 +172,135 @@ jobs:
           retention-days: 14
 
 
-      # -----------------------------------------
-      # 10. Print test summary
-      # -----------------------------------------
-      - name: Test Execution Summary
+      # ==========================================================
+      # 10. Generate GitHub Actions Summary
+      # ==========================================================
+      - name: Generate Test Execution Summary
         if: always()
         run: |
+
+          echo "# 🚀 Rest Assured API Test Report" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "## Execution Details" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Repository | ${{ github.repository }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch | ${{ github.ref_name }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Trigger | Manual |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Runner | ${{ runner.os }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Java | 21 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Framework | Rest Assured |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Test Exit Code | ${API_TEST_EXIT_CODE:-unknown} |" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${API_TEST_EXIT_CODE:-1}" = "0" ]; then
+
+            echo "## ✅ API Tests Passed" >> "$GITHUB_STEP_SUMMARY"
+
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+
+            echo "All Rest Assured API tests completed successfully." >> "$GITHUB_STEP_SUMMARY"
+
+          else
+
+            echo "## ❌ API Tests Failed" >> "$GITHUB_STEP_SUMMARY"
+
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+
+            echo "One or more Rest Assured API tests failed." >> "$GITHUB_STEP_SUMMARY"
+
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+
+            echo "Download the following artifacts for investigation:" >> "$GITHUB_STEP_SUMMARY"
+
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+
+            echo "- surefire-test-reports" >> "$GITHUB_STEP_SUMMARY"
+            echo "- extent-report" >> "$GITHUB_STEP_SUMMARY"
+            echo "- test-logs" >> "$GITHUB_STEP_SUMMARY"
+            echo "- screenshots" >> "$GITHUB_STEP_SUMMARY"
+
+          fi
+
+
+      # ==========================================================
+      # 11. Print test summary
+      # ==========================================================
+      - name: Display Test Execution Summary
+        if: always()
+        run: |
+
+          echo ""
           echo "=========================================="
           echo "Rest Assured API Test Execution Completed"
           echo "=========================================="
 
+          echo ""
+          echo "Test Exit Code: ${API_TEST_EXIT_CODE:-unknown}"
+
           if [ -d "target/surefire-reports" ]; then
+
             echo ""
-            echo "Surefire Reports:"
+            echo "=========================================="
+            echo "Surefire Reports"
+            echo "=========================================="
+
             find target/surefire-reports -type f | sort
+
           fi
 
           echo ""
-          echo "Workflow completed."
+          echo "=========================================="
+          echo "Generated Reports"
+          echo "=========================================="
+
+          if [ -f "report.html" ]; then
+            echo "✅ report.html found"
+          fi
+
+          if [ -d "reports" ]; then
+            echo "✅ reports directory found"
+          fi
+
+          echo ""
+          echo "Reports and logs have been uploaded as GitHub Actions artifacts."
+
+
+      # ==========================================================
+      # 12. Final API Test Status
+      #
+      # This is the final step that determines whether the
+      # GitHub Actions workflow is PASS or FAIL.
+      # ==========================================================
+      - name: Set Final API Test Status
+        if: always()
+        run: |
+
+          echo "=========================================="
+          echo "Final Rest Assured API Test Status"
+          echo "=========================================="
+
+          echo "API_TEST_EXIT_CODE=${API_TEST_EXIT_CODE:-unknown}"
+
+          if [ "${API_TEST_EXIT_CODE:-1}" != "0" ]; then
+
+            echo ""
+            echo "❌ Rest Assured API tests failed."
+            echo "Reports and artifacts have already been uploaded."
+            echo ""
+
+            exit 1
+
+          else
+
+            echo ""
+            echo "✅ All Rest Assured API tests passed successfully."
+            echo ""
+
+          fi
